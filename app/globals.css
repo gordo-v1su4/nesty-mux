@@ -150,6 +150,8 @@
   --color-sequence-pink-light: var(--sequence-pink-light);
 }
 
+@import "@xyflow/react/dist/style.css";
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -253,4 +255,37 @@
   height: calc(100% + 8px);
   background: linear-gradient(to bottom, transparent, #22d3ee, transparent);
   border-radius: 2px;
+}
+
+/* React Flow Controls Dark Mode Styling */
+.react-flow__controls {
+  background-color: rgb(39 39 42) !important; /* zinc-800 */
+  border: 1px solid rgb(63 63 70) !important; /* zinc-700 */
+  border-radius: 8px;
+}
+
+.react-flow__controls button {
+  background-color: rgb(39 39 42) !important; /* zinc-800 */
+  border-bottom: 1px solid rgb(63 63 70) !important; /* zinc-700 */
+  color: rgb(212 212 216) !important; /* zinc-300 */
+}
+
+.react-flow__controls button:hover {
+  background-color: rgb(63 63 70) !important; /* zinc-700 */
+  color: rgb(255 255 255) !important; /* white */
+}
+
+.react-flow__controls button:last-child {
+  border-bottom: none !important;
+}
+
+/* React Flow MiniMap Dark Mode Styling */
+.react-flow__minimap {
+  background-color: rgb(39 39 42) !important; /* zinc-800 */
+  border: 1px solid rgb(63 63 70) !important; /* zinc-700 */
+  border-radius: 8px;
+}
+
+.react-flow__minimap svg {
+  background-color: rgb(24 24 27) !important; /* zinc-900 */
 }

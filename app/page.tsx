@@ -10,11 +10,15 @@ import {
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
+  useNodesState,
+  useEdgesState,
   type Node,
   type Edge,
   type Connection,
   type NodeChange,
   type EdgeChange,
+  type NodeTypes,
   applyNodeChanges,
   applyEdgeChanges,
   addEdge,
@@ -57,7 +61,7 @@ const timelineData = [
   {
     id: "1A",
     duration: 2000,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Wide Shot - Launch Pad",
     sequence: "Opening Sequence",
     playbackId: "", // Will be populated when Mux video is added
@@ -65,7 +69,7 @@ const timelineData = [
   {
     id: "2A",
     duration: 1500,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Close-up - Pilot",
     sequence: "Opening Sequence",
     playbackId: "",
@@ -73,7 +77,7 @@ const timelineData = [
   {
     id: "2B",
     duration: 3000,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Rocket Ignition",
     sequence: "Opening Sequence",
     playbackId: "",
@@ -81,7 +85,7 @@ const timelineData = [
   {
     id: "3A",
     duration: 2500,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Space Station Exterior",
     sequence: "Space Station Arrival",
     playbackId: "",
@@ -89,7 +93,7 @@ const timelineData = [
   {
     id: "3B",
     duration: 1800,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Docking Sequence",
     sequence: "Space Station Arrival",
     playbackId: "",
@@ -97,7 +101,7 @@ const timelineData = [
   {
     id: "4A",
     duration: 2200,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Alien Ship Approach",
     sequence: "First Contact",
     parentSequence: "Space Station Arrival",
@@ -106,7 +110,7 @@ const timelineData = [
   {
     id: "4B",
     duration: 1600,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "First Contact",
     sequence: "First Contact",
     parentSequence: "Space Station Arrival",
@@ -115,7 +119,7 @@ const timelineData = [
   {
     id: "4C",
     duration: 2800,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Communication",
     sequence: "First Contact",
     parentSequence: "Space Station Arrival",
@@ -124,7 +128,7 @@ const timelineData = [
   {
     id: "4D",
     duration: 1900,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Crew Reactions",
     sequence: "First Contact",
     parentSequence: "Space Station Arrival",
@@ -133,7 +137,7 @@ const timelineData = [
   {
     id: "5A",
     duration: 3200,
-    thumbnail: "/placeholder.svg?height=80&width=120",
+    thumbnail: "",
     title: "Space Battle",
     sequence: "First Contact",
     parentSequence: "Space Station Arrival",
@@ -148,7 +152,7 @@ const mockData = {
       id: "movie-1",
       title: "Stellar Odyssey",
       type: "Feature Film",
-      thumbnail: "/placeholder.svg?height=200&width=300",
+      thumbnail: "",
       status: "In Production",
       childCount: 12,
       description: "An epic space adventure following humanity's first interstellar voyage",
@@ -359,6 +363,7 @@ export default function NestedCanvas() {
   const [currentPath, setCurrentPath] = useState<string[]>([])
   const [currentData, setCurrentData] = useState<ContentItem[]>(mockData.projects)
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null)
+  const hasAutoNavigated = useRef(false)
   const [currentTimeline, setCurrentTimeline] = useState(timelineData)
   const [selectedClipIndex, setSelectedClipIndex] = useState(2)
   const [isLoading, setIsLoading] = useState(false)
@@ -409,16 +414,73 @@ export default function NestedCanvas() {
     setMounted(true)
   }, [])
 
-  // Debug: Log when currentData or currentLevel changes
+  // Auto-navigate into the first project on initial load to show scenes
   useEffect(() => {
-    console.log("[Debug] State changed:", {
-      currentLevel,
-      currentDataLength: currentData.length,
-      currentDataIds: currentData.map((item: any) => item.id),
-      isCanvasMode,
-      // Note: flowNodes is derived from currentData, so currentData.length is sufficient
-    })
-  }, [currentLevel, currentData, isCanvasMode])
+    if (!mounted || hasAutoNavigated.current) return
+    
+    // Only auto-navigate if we're at projects level and haven't selected anything yet
+    if (currentLevel === "projects" && currentData.length > 0 && !selectedItem) {
+      const firstProject = currentData[0]
+      
+      if (firstProject && firstProject.scenes && firstProject.scenes.length > 0) {
+        hasAutoNavigated.current = true
+        
+        // Navigate into the first project to show scenes
+        setIsLoading(true)
+        
+        // Use requestAnimationFrame to ensure state updates happen after render
+        requestAnimationFrame(() => {
+          const newPath = [firstProject.title]
+          const scenes = firstProject.scenes || []
+          const sceneConnections: NodeConnection[] = []
+          
+          scenes.forEach((scene: any) => {
+            if (scene.connections) {
+              scene.connections.forEach((targetId: string) => {
+                sceneConnections.push({ from: scene.id, to: targetId })
+              })
+            }
+          })
+          
+          setCurrentPath(newPath)
+          setCurrentLevel("scenes")
+          setSelectedItem(firstProject)
+          setCurrentData(scenes)
+          setCurrentTimeline(firstProject.timeline || timelineData)
+          setSelectedClipIndex(0)
+          setConnections(sceneConnections)
+          
+          setTimeout(() => {
+            setIsLoading(false)
+          }, 300)
+        })
+      }
+    }
+  }, [mounted])
+
+  // Fallback: If we're at scenes level but have no data, try to load it
+  useEffect(() => {
+    if (currentLevel === "scenes" && currentData.length === 0 && selectedItem) {
+      console.log("[Fallback] Loading scenes from selectedItem:", selectedItem.title)
+      const scenes = selectedItem.scenes || []
+      if (scenes.length > 0) {
+        setCurrentData(scenes)
+        const sceneConnections: NodeConnection[] = []
+        scenes.forEach((scene: any) => {
+          if (scene.connections) {
+            scene.connections.forEach((targetId: string) => {
+              sceneConnections.push({ from: scene.id, to: targetId })
+            })
+          }
+        })
+        setConnections(sceneConnections)
+        console.log("[Fallback] Loaded", scenes.length, "scenes")
+      }
+    }
+  }, [currentLevel, currentData.length, selectedItem])
+
+  // Debug: Log when currentData or currentLevel changes (disabled to prevent infinite loop)
+  // Removed - was causing infinite re-renders due to currentData array reference changes
 
   // Calculate total timeline duration
   const totalDuration = currentTimeline.reduce((sum, clip) => sum + clip.duration, 0)
@@ -460,7 +522,7 @@ export default function NestedCanvas() {
 
   // Generate time markers with better spacing for real-time
   const generateTimeMarkers = () => {
-    const markers = []
+    const markers: Array<{ time: number; label: string; position: number }> = []
     // Add this check:
     if (totalDuration === 0 || timelineScale === 0) {
       return markers // Return empty array if no duration or scale
@@ -629,45 +691,60 @@ export default function NestedCanvas() {
     setCurrentTimeline((prev) => [...prev, newClip])
   }
 
-  const navigateToLevel = async (item: ContentItem, level: ViewLevel) => {
+  const navigateToLevel = useCallback(async (item: ContentItem, level: ViewLevel) => {
     setIsLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 300))
 
-    const newPath = [...currentPath, item.title]
-    setCurrentPath(newPath)
+    // Save current connections back to data before navigating
+    if (currentLevel === "scenes" && selectedItem) {
+      // Save connections to the project's scenes
+      const updatedScenes = currentData.map((scene: any) => {
+        const sceneConnections = connections
+          .filter(c => c.from === scene.id)
+          .map(c => c.to)
+        return { ...scene, connections: sceneConnections }
+      })
+      if (selectedItem.id === "movie-1") {
+        mockData.projects[0].scenes = updatedScenes
+      }
+    }
+
+    setCurrentPath((prevPath) => [...prevPath, item.title])
     setCurrentLevel(level)
     setSelectedItem(item)
 
-    console.log("[Navigate] Navigating to level:", level, "Item:", item.id, item.title)
-
     if (level === "scenes") {
       // Navigating into a project to see its scenes
-      setCurrentData(item.scenes || [])
-      // Keep showing project timeline at scenes level (will show scene timeline when navigating into a scene)
+      const scenes = item.scenes || []
+      setCurrentData(scenes)
       setCurrentTimeline(item.timeline || timelineData)
       setSelectedClipIndex(0)
+      // Load connections from data
       const sceneConnections: NodeConnection[] = []
-      item.scenes?.forEach((scene: any) => {
-        scene.connections?.forEach((targetId: string) => {
-          sceneConnections.push({ from: scene.id, to: targetId })
-        })
+      scenes.forEach((scene: any) => {
+        if (scene.connections) {
+          scene.connections.forEach((targetId: string) => {
+            sceneConnections.push({ from: scene.id, to: targetId })
+          })
+        }
       })
       setConnections(sceneConnections)
-      console.log("[Navigate] Set scenes data:", item.scenes?.length || 0, "scenes")
     } else if (level === "shots") {
-      // Navigating into a scene to see its shots - show THIS scene's timeline
-      setCurrentData(item.shots || [])
-      // Show the scene's timeline, not the project timeline
+      // Navigating into a scene to see its shots
+      const shots = item.shots || []
+      setCurrentData(shots)
       setCurrentTimeline(item.timeline || [])
       setSelectedClipIndex(0)
+      // Load connections from data
       const shotConnections: NodeConnection[] = []
-      item.shots?.forEach((shot: any) => {
-        shot.connections?.forEach((targetId: string) => {
-          shotConnections.push({ from: shot.id, to: targetId })
-        })
+      shots.forEach((shot: any) => {
+        if (shot.connections) {
+          shot.connections.forEach((targetId: string) => {
+            shotConnections.push({ from: shot.id, to: targetId })
+          })
+        }
       })
       setConnections(shotConnections)
-      console.log("[Navigate] Set shots data:", item.shots?.length || 0, "shots, timeline:", item.timeline?.length || 0, "clips")
     } else if (level === "projects") {
       setCurrentData(mockData.projects)
       setCurrentTimeline(timelineData)
@@ -678,7 +755,7 @@ export default function NestedCanvas() {
     }
 
     setIsLoading(false)
-  }
+  }, [currentLevel, currentData, selectedItem, connections])
 
   const navigateBack = async (index?: number) => {
     setIsLoading(true)
@@ -736,9 +813,10 @@ export default function NestedCanvas() {
     )
   }
 
-  const startConnection = (fromId: string) => {
+  const startConnection = useCallback((fromId: string) => {
     setConnectingFrom(fromId)
-  }
+  }, [])
+
 
   const completeConnection = (toId: string) => {
     if (connectingFrom && connectingFrom !== toId) {
@@ -752,83 +830,139 @@ export default function NestedCanvas() {
   }
 
   // React Flow node types (defined after navigateToLevel and startConnection)
-  const nodeTypes = useMemo(() => ({ flowNode: FlowNode }), [])
+  const nodeTypes = useMemo(() => {
+    return {
+      flowNode: FlowNode,
+    } as NodeTypes
+  }, [])
 
   // Convert currentData to React Flow nodes
-  const flowNodes = useMemo<Node[]>(() => {
+  const initialNodes = useMemo<Node[]>(() => {
     // Ensure sequenceColors is always available
     const colors = sequenceColors || initialSequenceColors
-    if (!colors || Object.keys(colors).length === 0) return []
+    if (!colors || Object.keys(colors).length === 0) {
+      return []
+    }
     
-    console.log("[React Flow] Generating nodes:", {
-      currentLevel,
-      currentDataLength: currentData.length,
-      currentData: currentData.map((item: any) => ({ id: item.id, title: item.title })),
-    })
+    if (!currentData || currentData.length === 0) {
+      return []
+    }
     
-    return currentData.map((item) => {
-      const sequenceColor = getSequenceColor(item.sequence, colors)
-      return {
-        id: item.id,
-        type: "flowNode",
-        position: { x: item.position?.x || 100, y: item.position?.y || 100 },
-        data: {
-          ...item,
-          sequenceColor,
-          currentLevel,
-          onNavigate: navigateToLevel,
-          onConnect: startConnection,
-          connectingFrom,
-        },
-        selected: false,
+    const nodes: Node[] = []
+    currentData.forEach((item, index) => {
+      if (item && item.id) {
+        const sequenceColor = getSequenceColor(item.sequence, colors)
+        const defaultPosition = { 
+          x: 100 + index * 320, 
+          y: 150 
+        }
+        
+        nodes.push({
+          id: item.id,
+          type: "flowNode",
+          position: item.position || defaultPosition,
+          data: {
+            ...item,
+            sequenceColor,
+            currentLevel,
+            onNavigate: navigateToLevel,
+            onConnect: startConnection,
+            connectingFrom,
+          },
+          selected: false,
+        })
       }
     })
+    
+    return nodes
   }, [currentData, sequenceColors, currentLevel, connectingFrom, navigateToLevel, startConnection])
 
-  // Convert connections to React Flow edges
-  const flowEdges = useMemo<Edge[]>(() => {
+  // Use React Flow's built-in state management hooks (like in their examples)
+  const [flowNodesState, setFlowNodesState, onNodesChange] = useNodesState(initialNodes)
+
+  // Convert connections to React Flow edges - using default bezier type
+  const initialEdges = useMemo<Edge[]>(() => {
     return connections.map((conn) => ({
       id: `${conn.from}-${conn.to}`,
       source: conn.from,
       target: conn.to,
-      type: "smoothstep",
-      animated: false,
-      style: { stroke: "rgba(34, 211, 238, 0.5)", strokeWidth: 2 },
+      type: "default", // Bezier curve (default React Flow edge)
+      style: { 
+        stroke: "rgba(34, 211, 238, 0.8)", 
+        strokeWidth: 2,
+      },
     }))
   }, [connections])
 
-  // Handle node changes (position updates)
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setCurrentData((prev) => {
-      const updated = [...prev]
-      changes.forEach((change) => {
-        if (change.type === "position" && change.position) {
-          const index = updated.findIndex((item) => item.id === change.id)
-          if (index !== -1) {
-            updated[index] = { ...updated[index], position: change.position }
-          }
-        }
+  // Use React Flow's built-in state management hooks (like in their examples)
+  const [flowEdgesState, setFlowEdgesState, onEdgesChange] = useEdgesState(initialEdges)
+
+  // Sync nodes when initialNodes change (but preserve positions from state)
+  useEffect(() => {
+    setFlowNodesState((nds) => {
+      const nodeMap = new Map(nds.map(n => [n.id, n]))
+      return initialNodes.map(newNode => {
+        const existing = nodeMap.get(newNode.id)
+        return existing ? { ...existing, data: newNode.data } : newNode
       })
-      return updated
     })
-  }, [])
+  }, [initialNodes, setFlowNodesState])
 
-  // Handle edge changes
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    // Apply edge changes if needed
-  }, [])
+  // Sync edges when connections change
+  useEffect(() => {
+    setFlowEdgesState(initialEdges)
+  }, [initialEdges, setFlowEdgesState])
 
-  // Handle new connections
+  // Handle node position updates to persist in currentData
+  useEffect(() => {
+    const positionUpdates = flowNodesState
+      .filter(node => {
+        const original = initialNodes.find(n => n.id === node.id)
+        return original && (
+          original.position.x !== node.position.x || 
+          original.position.y !== node.position.y
+        )
+      })
+    
+    if (positionUpdates.length > 0) {
+      setCurrentData((prev) => {
+        const updated = [...prev]
+        positionUpdates.forEach((node) => {
+          const index = updated.findIndex((item) => item.id === node.id)
+          if (index !== -1) {
+            updated[index] = { ...updated[index], position: node.position }
+          }
+        })
+        return updated
+      })
+    }
+  }, [flowNodesState, initialNodes])
+
+  // Handle new connections - using React Flow's addEdge helper
   const onConnect = useCallback((connection: Connection) => {
     if (connection.source && connection.target && connection.source !== connection.target) {
+      const newConnection = { from: connection.source!, to: connection.target! }
       setConnections((prev) => {
         const exists = prev.find((c) => c.from === connection.source && c.to === connection.target)
         if (exists) return prev
-        return [...prev, { from: connection.source!, to: connection.target! }]
+        return [...prev, newConnection]
       })
+      // Update edges state using addEdge helper (like React Flow examples)
+      const newEdge = addEdge(
+        {
+          ...connection,
+          type: "default",
+          style: { 
+            stroke: "rgba(34, 211, 238, 0.8)", 
+            strokeWidth: 2,
+          },
+        },
+        flowEdgesState
+      )
+      setFlowEdgesState(newEdge)
       setConnectingFrom(null)
     }
-  }, [])
+  }, [flowEdgesState, setFlowEdgesState])
 
   const handleCanvasClick = () => {
     if (connectingFrom) {
@@ -1265,7 +1399,7 @@ export default function NestedCanvas() {
     const newClip = {
       id: newClipId,
       duration: 2000,
-      thumbnail: "/placeholder.svg?height=80&width=120",
+      thumbnail: "",
       title: `New ${newSequenceName} Shot`,
       sequence: newSequenceName,
       playbackId: "",
@@ -1742,7 +1876,7 @@ export default function NestedCanvas() {
                           </div>
                         ) : (
                           <video
-                            src={scrambledVideoUrl || "/placeholder.svg"}
+                            src={scrambledVideoUrl || ""}
                             controls
                             className="w-full rounded-lg border border-cyan-400/30"
                           />
@@ -1946,74 +2080,98 @@ export default function NestedCanvas() {
 
           {/* Canvas Area - React Flow */}
           {isCanvasMode ? (
-            <div className="relative h-[600px] bg-zinc-900/50 border border-zinc-800 rounded-lg overflow-hidden">
-              {flowNodes.length === 0 ? (
-                <div className="w-full h-full flex items-center justify-center text-zinc-400">
-                  <div className="text-center">
-                    <p className="text-lg mb-2">No nodes to display</p>
-                    <p className="text-sm">Current level: {currentLevel}</p>
-                    <p className="text-sm">Data items: {currentData.length}</p>
-                  </div>
-                </div>
-              ) : (
-                <ReactFlowProvider>
-                  <ReactFlow
-                    key={`${currentLevel}-${currentData.length}`}
-                    nodes={flowNodes}
-                    edges={flowEdges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect}
-                    onNodeDoubleClick={(_, node) => {
+            <div className="relative h-[calc(100vh-300px)] min-h-[600px] bg-zinc-900 border-2 border-zinc-700 rounded-lg overflow-hidden mx-6 mb-6 shadow-xl">
+              <ReactFlowProvider>
+                <ReactFlow
+                  nodes={flowNodesState}
+                  edges={flowEdgesState}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onNodeDoubleClick={(_, node) => {
+                    const item = currentData.find((d) => d.id === node.id)
+                    if (!item) {
+                      return
+                    }
+                    
+                    if (currentLevel === "scenes" && Array.isArray(item["shots"])) {
+                      navigateToLevel(item, "shots")
+                    }
+                  }}
+                  nodeTypes={nodeTypes}
+                  defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                  fitView={false}
+                  className="bg-zinc-900 w-full h-full"
+                  style={{ width: "100%", height: "100%", background: "#18181b" }}
+                  proOptions={{ hideAttribution: true }}
+                  minZoom={0.1}
+                  maxZoom={2}
+                  nodesDraggable={true}
+                  nodesConnectable={true}
+                  elementsSelectable={true}
+                >
+                <Background color="#3f3f46" gap={20} />
+                <Controls 
+                  className="react-flow__controls"
+                  style={{
+                    backgroundColor: 'rgb(39 39 42)', // zinc-800
+                    border: '1px solid rgb(63 63 70)', // zinc-700
+                    borderRadius: '8px',
+                  }}
+                />
+                <MiniMap
+                  className="react-flow__minimap"
+                  style={{
+                    backgroundColor: 'rgb(39 39 42)', // zinc-800
+                    border: '1px solid rgb(63 63 70)', // zinc-700
+                    borderRadius: '8px',
+                  }}
+                  nodeColor={(node) => {
+                    try {
                       const item = currentData.find((d) => d.id === node.id)
-                      if (!item) {
-                        console.log("[React Flow] Node double-clicked but item not found:", node.id)
-                        return
-                      }
-                      
-                      console.log("[React Flow] Node double-clicked:", {
-                        nodeId: node.id,
-                        currentLevel,
-                        itemTitle: item.title,
-                        hasScenes: Array.isArray(item.scenes),
-                        hasShots: Array.isArray(item.shots),
-                        scenesCount: item.scenes?.length || 0,
-                        shotsCount: item.shots?.length || 0,
-                        timelineLength: item.timeline?.length || 0,
-                      })
-                      
-                      if (currentLevel === "projects" && Array.isArray(item.scenes)) {
-                        console.log("[React Flow] Navigating to scenes level")
-                        navigateToLevel(item, "scenes")
-                      } else if (currentLevel === "scenes" && Array.isArray(item.shots)) {
-                        console.log("[React Flow] Navigating to shots level")
-                        navigateToLevel(item, "shots")
-                      } else {
-                        console.log("[React Flow] Cannot navigate - missing scenes or shots array")
-                      }
-                    }}
-                    nodeTypes={nodeTypes}
-                    fitView
-                    fitViewOptions={{ padding: 0.2 }}
-                    className="bg-zinc-900"
-                    style={{ background: "#18181b" }}
-                  >
-                  <Background color="#3f3f46" gap={20} />
-                  <Controls className="bg-zinc-800 border-zinc-700" />
-                  <MiniMap
-                    className="bg-zinc-800 border-zinc-700"
-                    nodeColor={(node) => {
-                      const item = currentData.find((d) => d.id === node.id)
-                      if (!item) return "#71717a"
+                      if (!item) return "#3f3f46" // zinc-700 - darker
                       const colors = sequenceColors || initialSequenceColors
                       const color = getSequenceColor(item.sequence, colors)
-                      return color.dot.replace("bg-", "#").replace("-400", "")
-                    }}
-                    maskColor="rgba(0, 0, 0, 0.6)"
-                  />
-                  </ReactFlow>
-                </ReactFlowProvider>
-              )}
+                      // Use darker, more muted colors for minimap
+                      if (color?.dot) {
+                        // Convert color classes to hex, but make them darker
+                        const colorMap: Record<string, string> = {
+                          "bg-red-400": "#991b1b",      // dark red
+                          "bg-blue-400": "#1e3a8a",     // dark blue
+                          "bg-green-400": "#166534",    // dark green
+                          "bg-yellow-400": "#854d0e",   // dark yellow
+                          "bg-purple-400": "#6b21a8",   // dark purple
+                          "bg-orange-400": "#9a3412",   // dark orange
+                          "bg-cyan-400": "#155e75",     // dark cyan
+                          "bg-pink-400": "#9f1239",     // dark pink
+                        }
+                        return colorMap[color.dot] || "#3f3f46"
+                      }
+                      return "#3f3f46" // zinc-700 - darker default
+                    } catch {
+                      return "#3f3f46" // zinc-700 - darker default
+                    }
+                  }}
+                  maskColor="rgba(0, 0, 0, 0.8)"
+                />
+                </ReactFlow>
+                {flowNodesState.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-400 pointer-events-none z-50">
+                    <div className="text-center bg-zinc-900/90 p-4 rounded-lg border border-zinc-700">
+                      <p className="text-lg mb-2">Loading nodes...</p>
+                      <p className="text-sm">Current level: {currentLevel}</p>
+                      <p className="text-sm">Data items: {currentData.length}</p>
+                      <p className="text-sm">Sequence colors: {Object.keys(sequenceColors || {}).length}</p>
+                    </div>
+                  </div>
+                )}
+                {/* Debug overlay - remove after fixing */}
+                {flowNodesState.length > 0 && (
+                  <div className="absolute top-2 left-2 bg-green-500/80 text-white text-xs px-2 py-1 rounded z-50 pointer-events-none">
+                    {flowNodesState.length} nodes loaded
+                  </div>
+                )}
+              </ReactFlowProvider>
             </div>
           ) : (
             /* Project Grid View */
@@ -2036,12 +2194,14 @@ export default function NestedCanvas() {
                       className="cursor-pointer group"
                     >
                       <Card className="bg-zinc-800/50 border-zinc-700 hover:border-cyan-400/50 transition-all duration-300 overflow-hidden group-hover:shadow-lg group-hover:shadow-cyan-400/10">
-                        <div className="relative aspect-video overflow-hidden">
-                          <img
-                            src={item.thumbnail || "/placeholder.svg"}
-                            alt={item.title}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
+                        <div className="relative aspect-video overflow-hidden bg-zinc-800">
+                          {item.thumbnail && (
+                            <img
+                              src={item.thumbnail}
+                              alt={item.title}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            />
+                          )}
                           <div className="absolute inset-0 bg-linear-to-t from-zinc-900 via-zinc-900/20 to-transparent" />
 
                           {/* Hover Play Indicator */}

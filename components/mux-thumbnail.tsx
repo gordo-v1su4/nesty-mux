@@ -33,7 +33,9 @@ export function MuxThumbnail({
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
 
-  const thumbnailUrl = `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${time}&width=${width}&height=${height}&fit_mode=${fitMode}`
+  const thumbnailUrl = playbackId
+    ? `https://image.mux.com/${playbackId}/thumbnail.jpg?time=${time}&width=${width}&height=${height}&fit_mode=${fitMode}`
+    : ""
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -41,7 +43,7 @@ export function MuxThumbnail({
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  if (hasError) {
+  if (hasError || !playbackId) {
     return (
       <div
         className={cn("relative bg-muted flex items-center justify-center", className)}
@@ -66,7 +68,7 @@ export function MuxThumbnail({
       )}
 
       <Image
-        src={thumbnailUrl || "/placeholder.svg"}
+        src={thumbnailUrl || ""}
         alt={alt}
         width={width}
         height={height}
