@@ -4,27 +4,6 @@ import type React from "react"
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence, type PanInfo } from "framer-motion"
-import {
-  ReactFlowProvider,
-  ReactFlow,
-  Background,
-  Controls,
-  MiniMap,
-  useReactFlow,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
-  type Connection,
-  type NodeChange,
-  type EdgeChange,
-  type NodeTypes,
-  applyNodeChanges,
-  applyEdgeChanges,
-  addEdge,
-} from "@xyflow/react"
-import "@xyflow/react/dist/style.css"
-import { FlowNode } from "@/components/flow-node"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -376,7 +355,6 @@ export default function NestedCanvas() {
   const [showVideoLibrary, setShowVideoLibrary] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
 
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [showNewSequenceModal, setShowNewSequenceModal] = useState(false)
   const [newSequenceName, setNewSequenceName] = useState("")
@@ -575,14 +553,6 @@ export default function NestedCanvas() {
     if (!mounted) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (connectingFrom && canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect()
-        setMousePosition({
-          x: (e.clientX - rect.left - canvasPan.x) / canvasZoom,
-          y: (e.clientY - rect.top - canvasPan.y) / canvasZoom,
-        })
-      }
-
       if (isPanning && canvasRef.current) {
         const deltaX = e.clientX - panStart.x
         const deltaY = e.clientY - panStart.y
@@ -598,7 +568,7 @@ export default function NestedCanvas() {
       setIsPanning(false)
     }
 
-    if (connectingFrom || isPanning) {
+    if (isPanning) {
       window.addEventListener("mousemove", handleMouseMove)
       window.addEventListener("mouseup", handleMouseUp)
       return () => {
@@ -606,7 +576,7 @@ export default function NestedCanvas() {
         window.removeEventListener("mouseup", handleMouseUp)
       }
     }
-  }, [connectingFrom, mounted, canvasZoom, canvasPan, isPanning, panStart])
+  }, [mounted, canvasZoom, canvasPan, isPanning, panStart])
 
   const scrambleTimeline = () => {
     // Create a copy of the current timeline
@@ -802,173 +772,6 @@ export default function NestedCanvas() {
     setIsLoading(false)
   }
 
-  const handleNodeDragEnd = (itemId: string, info: PanInfo, position: { x: number; y: number }) => {
-    setIsDragging(null)
-
-    const newX = position.x + info.offset.x / canvasZoom
-    const newY = position.y + info.offset.y / canvasZoom
-
-    setCurrentData((prevData) =>
-      prevData.map((item) => (item.id === itemId ? { ...item, position: { x: newX, y: newY } } : item)),
-    )
-  }
-
-  const startConnection = useCallback((fromId: string) => {
-    setConnectingFrom(fromId)
-  }, [])
-
-
-  const completeConnection = (toId: string) => {
-    if (connectingFrom && connectingFrom !== toId) {
-      const connectionExists = connections.some((conn) => conn.from === connectingFrom && conn.to === toId)
-
-      if (!connectionExists) {
-        setConnections((prev) => [...prev, { from: connectingFrom, to: toId }])
-      }
-    }
-    setConnectingFrom(null)
-  }
-
-  // React Flow node types (defined after navigateToLevel and startConnection)
-  const nodeTypes = useMemo(() => {
-    return {
-      flowNode: FlowNode,
-    } as NodeTypes
-  }, [])
-
-  // Convert currentData to React Flow nodes
-  const initialNodes = useMemo<Node[]>(() => {
-    // Ensure sequenceColors is always available
-    const colors = sequenceColors || initialSequenceColors
-    if (!colors || Object.keys(colors).length === 0) {
-      return []
-    }
-    
-    if (!currentData || currentData.length === 0) {
-      return []
-    }
-    
-    const nodes: Node[] = []
-    currentData.forEach((item, index) => {
-      if (item && item.id) {
-        const sequenceColor = getSequenceColor(item.sequence, colors)
-        const defaultPosition = { 
-          x: 100 + index * 320, 
-          y: 150 
-        }
-        
-        nodes.push({
-          id: item.id,
-          type: "flowNode",
-          position: item.position || defaultPosition,
-          data: {
-            ...item,
-            sequenceColor,
-            currentLevel,
-            onNavigate: navigateToLevel,
-            onConnect: startConnection,
-            connectingFrom,
-          },
-          selected: false,
-        })
-      }
-    })
-    
-    return nodes
-  }, [currentData, sequenceColors, currentLevel, connectingFrom, navigateToLevel, startConnection])
-
-  // Use React Flow's built-in state management hooks (like in their examples)
-  const [flowNodesState, setFlowNodesState, onNodesChange] = useNodesState(initialNodes)
-
-  // Convert connections to React Flow edges - using default bezier type
-  const initialEdges = useMemo<Edge[]>(() => {
-    return connections.map((conn) => ({
-      id: `${conn.from}-${conn.to}`,
-      source: conn.from,
-      target: conn.to,
-      type: "default", // Bezier curve (default React Flow edge)
-      style: { 
-        stroke: "rgba(34, 211, 238, 0.8)", 
-        strokeWidth: 2,
-      },
-    }))
-  }, [connections])
-
-  // Use React Flow's built-in state management hooks (like in their examples)
-  const [flowEdgesState, setFlowEdgesState, onEdgesChange] = useEdgesState(initialEdges)
-
-  // Sync nodes when initialNodes change (but preserve positions from state)
-  useEffect(() => {
-    setFlowNodesState((nds) => {
-      const nodeMap = new Map(nds.map(n => [n.id, n]))
-      return initialNodes.map(newNode => {
-        const existing = nodeMap.get(newNode.id)
-        return existing ? { ...existing, data: newNode.data } : newNode
-      })
-    })
-  }, [initialNodes, setFlowNodesState])
-
-  // Sync edges when connections change
-  useEffect(() => {
-    setFlowEdgesState(initialEdges)
-  }, [initialEdges, setFlowEdgesState])
-
-  // Handle node position updates to persist in currentData
-  useEffect(() => {
-    const positionUpdates = flowNodesState
-      .filter(node => {
-        const original = initialNodes.find(n => n.id === node.id)
-        return original && (
-          original.position.x !== node.position.x || 
-          original.position.y !== node.position.y
-        )
-      })
-    
-    if (positionUpdates.length > 0) {
-      setCurrentData((prev) => {
-        const updated = [...prev]
-        positionUpdates.forEach((node) => {
-          const index = updated.findIndex((item) => item.id === node.id)
-          if (index !== -1) {
-            updated[index] = { ...updated[index], position: node.position }
-          }
-        })
-        return updated
-      })
-    }
-  }, [flowNodesState, initialNodes])
-
-  // Handle new connections - using React Flow's addEdge helper
-  const onConnect = useCallback((connection: Connection) => {
-    if (connection.source && connection.target && connection.source !== connection.target) {
-      const newConnection = { from: connection.source!, to: connection.target! }
-      setConnections((prev) => {
-        const exists = prev.find((c) => c.from === connection.source && c.to === connection.target)
-        if (exists) return prev
-        return [...prev, newConnection]
-      })
-      // Update edges state using addEdge helper (like React Flow examples)
-      const newEdge = addEdge(
-        {
-          ...connection,
-          type: "default",
-          style: { 
-            stroke: "rgba(34, 211, 238, 0.8)", 
-            strokeWidth: 2,
-          },
-        },
-        flowEdgesState
-      )
-      setFlowEdgesState(newEdge)
-      setConnectingFrom(null)
-    }
-  }, [flowEdgesState, setFlowEdgesState])
-
-  const handleCanvasClick = () => {
-    if (connectingFrom) {
-      setConnectingFrom(null)
-    }
-  }
 
   const handleClipSelect = (index: number) => {
     setSelectedClipIndex(index)
@@ -2078,102 +1881,8 @@ export default function NestedCanvas() {
             </div>
           )}
 
-          {/* Canvas Area - React Flow */}
-          {isCanvasMode ? (
-            <div className="relative h-[calc(100vh-300px)] min-h-[600px] bg-zinc-900 border-2 border-zinc-700 rounded-lg overflow-hidden mx-6 mb-6 shadow-xl">
-              <ReactFlowProvider>
-                <ReactFlow
-                  nodes={flowNodesState}
-                  edges={flowEdgesState}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  onNodeDoubleClick={(_, node) => {
-                    const item = currentData.find((d) => d.id === node.id)
-                    if (!item) {
-                      return
-                    }
-                    
-                    if (currentLevel === "scenes" && Array.isArray(item["shots"])) {
-                      navigateToLevel(item, "shots")
-                    }
-                  }}
-                  nodeTypes={nodeTypes}
-                  defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-                  fitView={false}
-                  className="bg-zinc-900 w-full h-full"
-                  style={{ width: "100%", height: "100%", background: "#18181b" }}
-                  proOptions={{ hideAttribution: true }}
-                  minZoom={0.1}
-                  maxZoom={2}
-                  nodesDraggable={true}
-                  nodesConnectable={true}
-                  elementsSelectable={true}
-                >
-                <Background color="#3f3f46" gap={20} />
-                <Controls 
-                  className="react-flow__controls"
-                  style={{
-                    backgroundColor: 'rgb(39 39 42)', // zinc-800
-                    border: '1px solid rgb(63 63 70)', // zinc-700
-                    borderRadius: '8px',
-                  }}
-                />
-                <MiniMap
-                  className="react-flow__minimap"
-                  style={{
-                    backgroundColor: 'rgb(39 39 42)', // zinc-800
-                    border: '1px solid rgb(63 63 70)', // zinc-700
-                    borderRadius: '8px',
-                  }}
-                  nodeColor={(node) => {
-                    try {
-                      const item = currentData.find((d) => d.id === node.id)
-                      if (!item) return "#3f3f46" // zinc-700 - darker
-                      const colors = sequenceColors || initialSequenceColors
-                      const color = getSequenceColor(item.sequence, colors)
-                      // Use darker, more muted colors for minimap
-                      if (color?.dot) {
-                        // Convert color classes to hex, but make them darker
-                        const colorMap: Record<string, string> = {
-                          "bg-red-400": "#991b1b",      // dark red
-                          "bg-blue-400": "#1e3a8a",     // dark blue
-                          "bg-green-400": "#166534",    // dark green
-                          "bg-yellow-400": "#854d0e",   // dark yellow
-                          "bg-purple-400": "#6b21a8",   // dark purple
-                          "bg-orange-400": "#9a3412",   // dark orange
-                          "bg-cyan-400": "#155e75",     // dark cyan
-                          "bg-pink-400": "#9f1239",     // dark pink
-                        }
-                        return colorMap[color.dot] || "#3f3f46"
-                      }
-                      return "#3f3f46" // zinc-700 - darker default
-                    } catch {
-                      return "#3f3f46" // zinc-700 - darker default
-                    }
-                  }}
-                  maskColor="rgba(0, 0, 0, 0.8)"
-                />
-                </ReactFlow>
-                {flowNodesState.length === 0 && (
-                  <div className="absolute inset-0 flex items-center justify-center text-zinc-400 pointer-events-none z-50">
-                    <div className="text-center bg-zinc-900/90 p-4 rounded-lg border border-zinc-700">
-                      <p className="text-lg mb-2">Loading nodes...</p>
-                      <p className="text-sm">Current level: {currentLevel}</p>
-                      <p className="text-sm">Data items: {currentData.length}</p>
-                      <p className="text-sm">Sequence colors: {Object.keys(sequenceColors || {}).length}</p>
-                    </div>
-                  </div>
-                )}
-                {/* Debug overlay - remove after fixing */}
-                {flowNodesState.length > 0 && (
-                  <div className="absolute top-2 left-2 bg-green-500/80 text-white text-xs px-2 py-1 rounded z-50 pointer-events-none">
-                    {flowNodesState.length} nodes loaded
-                  </div>
-                )}
-              </ReactFlowProvider>
-            </div>
-          ) : (
+          {/* Canvas Area - Removed */}
+          {!isCanvasMode && (
             /* Project Grid View */
             <div className="p-6">
               <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
