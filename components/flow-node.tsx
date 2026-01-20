@@ -21,6 +21,13 @@ type ContentItem = {
   connections?: string[]
 }
 
+type SequenceColor = {
+  primary: string
+  accent: string
+  text: string
+  dot: string
+}
+
 export interface FlowNodeData {
   // ContentItem properties (excluding id and position which are Node properties)
   title: string
@@ -33,7 +40,7 @@ export interface FlowNodeData {
   shots?: ContentItem[]
   connections?: string[]
   // Additional FlowNode-specific properties
-  sequenceColor: any
+  sequenceColor: SequenceColor
   currentLevel: "projects" | "scenes" | "shots"
   onNavigate?: (item: ContentItem, level: "scenes" | "shots") => void
   onConnect?: (nodeId: string) => void
@@ -50,7 +57,7 @@ const FlowNodeComponent = (props: NodeProps<FlowNodeData>) => {
   // The data property should be FlowNodeData, but TypeScript inference is failing
   const nodeData = data as FlowNodeData
   const id = String(nodeId ?? '')
-  const { title, description, location, cameraAngle, duration, sequenceColor, sequence, currentLevel, onNavigate, onConnect, connectingFrom } = nodeData
+  const { title, description, location, duration, sequenceColor, sequence, currentLevel, onNavigate, onConnect, connectingFrom } = nodeData
 
   // Fallback color if sequenceColor is missing
   const color = sequenceColor || {
